@@ -1,0 +1,28 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+dist/
+build/
+.eggs/
+
+# Environment
+.env
+.venv/
+venv/
+
+# Data (do not commit vector DB or uploaded files)
+data/chroma_db/
+data/uploads/
+
+# Fine-tuning outputs
+fine_tuned_model/
+*.gguf
+
+# IDE
+.vscode/
+.idea/
+*.swp
+
+# OS
+.DS_Store
