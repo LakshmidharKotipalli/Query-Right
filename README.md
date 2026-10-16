@@ -1,113 +1,48 @@
 # Query Right
 
-A Retrieval-Augmented Generation (RAG) pipeline for document Q&A, built with Gemma 3 4B, LangChain, ChromaDB, and Streamlit. Upload any document and ask questions — answers are grounded in the source material with citations, never made up.
+A local RAG app for document Q&A with agentic query routing. Upload documents and ask questions; answers are
+grounded in your sources (or the web, when needed) and come with citations.
 
----
+Built with Gemma 3 (via Ollama), LangChain, ChromaDB and Streamlit.
 
-## Table of Contents
+## How it works
 
-- [Architecture Overview](#architecture-overview)
-- [Setup & Installation](#setup--installation)
-- [Configuration Reference](#configuration-reference)
+A small router model (`gemma3:270m`) classifies every query, then Gemma 3 4B answers from the right context:
 
----
-
-## Architecture Overview
+| Route | Context used |
+|---|---|
+| **LOCAL** | Top chunks from your documents in ChromaDB |
+| **WEB** | DuckDuckGo search results |
+| **COMBINED** | Documents and web searched in parallel, then merged |
+| **DIRECT** | No retrieval; the model answers from its own knowledge |
 
 ```
-                              ┌─────────────────────┐
-                              │     Streamlit UI    │
-                              │   (Upload + Chat)   │
-                              └──────────┬──────────┘
-                                         │
-                              ┌──────────▼──────────┐
-                              │    gemma3:270m      │  ← small model, zero-latency routing
-                              │ (Agentic Classifier)│
-                              └──┬────────┬───────┬─┘
-                                 │        │       │
-                              LOCAL    COMBINED  WEB   DIRECT
-                                 │        │       │      │
-                    ┌────────────┘     ┌──┘       └──┐   └──────────────┐
-                    │              ┌───┴───┐          │                 │
-           ┌────────▼────────┐    LOCAL  WEB    ┌──────▼──────┐  ┌───────▼───────┐
-           │    ChromaDB     │    in parallel   │  DuckDuckGo │  │  Gemma 3 4B   │
-           │    Retrieval    │◄───┘       └────►│  Web Search │  │  (no context) │
-           └────────┬────────┘                  └──────┬──────┘  └───────┬───────┘
-                    │                                  │                 │
-                    └──────────────┬───────────────────┘                 │
-                                   │                                     │
-                        ┌──────────▼──────────┐                          │
-                        │    Merge Context    │  ← club results          │
-                        └──────────┬──────────┘                          │
-                                   │                                     │
-                        ┌──────────▼──────────┐                          │
-                        │     Gemma 3 4B      │                          │
-                        │    (via Ollama)     │                          │
-                        └──────────┬──────────┘                          │
-                                   │                                     │
-                                   └──────────────┬──────────────────────┘
-                                                  │
-                                       ┌──────────▼──────────┐
-                                       │  Answer + Citations │
-                                       └─────────────────────┘
+Query → gemma3:270m router → LOCAL / WEB / COMBINED / DIRECT → Gemma 3 4B → answer + citations
 ```
 
-**Data Flow:**
+Documents (PDF, TXT, DOCX) are chunked (1000 chars, 200 overlap), embedded with `all-MiniLM-L6-v2`, and stored
+persistently in ChromaDB.
 
-1. User uploads PDF/TXT/DOCX documents via the Streamlit sidebar
-2. Documents are loaded, chunked (1000 chars with 200 overlap), and embedded using `all-MiniLM-L6-v2`
-3. Embeddings are stored persistently in ChromaDB
-4. Each query is first routed by `gemma3:270m` — a lightweight model used purely for classification (LOCAL, WEB, COMBINED, or DIRECT)
-5. LOCAL queries retrieve the most relevant chunks from ChromaDB; WEB queries fetch results from DuckDuckGo
-6. For COMBINED queries, both ChromaDB and DuckDuckGo run in parallel and their results are merged into a single context
-7. For DIRECT queries (no documents needed, no live data needed), Gemma 3 4B answers straight from its own knowledge
-8. The context (or none, for DIRECT) is passed to Gemma 3 4B which generates a grounded answer with source citations
+## Setup
 
----
-
-## Setup & Installation
-
-### Prerequisites
-
-- Python 3.10+
-- [Ollama](https://ollama.com/) installed and running
-
-### Step 1: Pull the Gemma 3 4B Model
+Requires Python 3.10+ and [Ollama](https://ollama.com/) running.
 
 ```bash
 ollama pull gemma3:4b
-```
-
-### Step 2: Install Python Dependencies
-
-```bash
-cd query-right
 pip install -r requirements.txt
+streamlit run app.py   # http://localhost:8501
 ```
 
-### Step 3: Launch the Application
+## Configuration
 
-```bash
-streamlit run app.py
-```
-
-The app opens at `http://localhost:8501`.
-
----
-
-## Configuration Reference
-
-All configuration lives in `config.py` and can be overridden via `.env`:
+Defaults live in `config.py` and can be overridden in `.env`:
 
 | Variable | Default | Description |
-|----------|---------|-------------|
-| `OLLAMA_BASE_URL` | `http://localhost:11434` | Ollama server URL |
-| `LLM_MODEL` | `gemma3:4b` | Ollama model name |
-| `LLM_TEMPERATURE` | `0.3` | Generation temperature (low for factual) |
-| `LLM_NUM_CTX` | `8192` | Context window size |
-| `EMBEDDING_MODEL` | `all-MiniLM-L6-v2` | Sentence-transformer model |
-| `CHUNK_SIZE` | `1000` | Characters per chunk |
-| `CHUNK_OVERLAP` | `200` | Overlap between chunks |
-| `RETRIEVAL_TOP_K` | `5` | Number of chunks to retrieve |
-| `RETRIEVAL_SEARCH_TYPE` | `mmr` | Search strategy (mmr or similarity) |
-| `WEB_CRAWL_MAX_RESULTS` | `5` | DuckDuckGo results count |
+|---|---|---|
+| `LLM_MODEL` | `gemma3:4b` | Answering model |
+| `OLLAMA_BASE_URL` | `http://localhost:11434` | Ollama server |
+| `EMBEDDING_MODEL` | `all-MiniLM-L6-v2` | Embedding model |
+| `CHUNK_SIZE` / `CHUNK_OVERLAP` | `1000` / `200` | Chunking |
+| `RETRIEVAL_TOP_K` | `5` | Chunks retrieved |
+| `RETRIEVAL_SEARCH_TYPE` | `mmr` | `mmr` or `similarity` |
+| `WEB_CRAWL_MAX_RESULTS` | `5` | DuckDuckGo results |
